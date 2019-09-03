@@ -270,4 +270,55 @@ class ImagickEscposImage extends EscposImage
         $flat -> compositeimage($im, \Imagick::COMPOSITE_OVER, 0, 0);
         return $flat;
     }
+
+        /**
+     * Load a PDF for use on the printer
+     *
+     * @param string $pdfFile
+     *  The file to load
+     * @param int $pageWidth
+     *  The width, in pixels, of the printer's output. The first page of the
+     *  PDF will be scaled to approximately fit in this area.
+     * @throws Exception Where Imagick is not loaded, or where a missing file
+     *  or invalid page number is requested.
+     * @return array Array of images, retrieved from the PDF file.
+     */
+    public static function loadBinary($binay, $pageWidth = 550)
+    {
+        if (!EscposImage::isImagickLoaded()) {
+            throw new Exception(__FUNCTION__ . " requires imagick extension.");
+        }
+        /*
+         * Load first page at very low density (resolution), to figure out what
+         * density to use to achieve $pageWidth
+         */
+        try {
+            $image = new \Imagick();
+            $testRes = 2; // Test resolution
+            $image -> setresolution($testRes, $testRes);
+            /* Load document just to measure geometry */
+            $image -> readImageBlob($binay);
+            $geo = $image -> getimagegeometry();
+            $image -> destroy();
+            $width = $geo['width'];
+            $newRes = $pageWidth / $width * $testRes;
+            /* Load entire document in */
+            $image -> setresolution($newRes, $newRes);
+            $image -> readImageBlob($binay);
+            $pages = $image -> getNumberImages();
+            /* Convert images to Escpos objects */
+            $ret = [];
+            for ($i = 0; $i < $pages; $i++) {
+                $image -> setIteratorIndex($i);
+                $ep = new ImagickEscposImage();
+                $ep -> readImageFromImagick($image);
+                $ret[] = $ep;
+            }
+            return $ret;
+        } catch (\ImagickException $e) {
+            /* Wrap in normal exception, so that classes which call this do not
+             * themselves require imagick as a dependency. */
+            throw new Exception($e);
+        }
+    }
 }
